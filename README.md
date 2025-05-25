@@ -12,7 +12,7 @@ This tool includes:
 
 ### ✅ How to Use
 
-1. Download the latest `.zip` from the [Releases](https://github.com/SaNCT-B/Stream-Tool/releases)
+1. Download the latest `StreamTool.zip` from the [Releases](https://github.com/SaNCT-B/Stream-Tool/releases)
 2. Extract the contents to a folder
 3. Double-click:
    - `Stream Tool.exe` → launches the main app
