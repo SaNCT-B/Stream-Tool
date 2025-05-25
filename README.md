@@ -14,8 +14,7 @@ This tool includes:
 
 1. Download the latest `.zip` from the [Releases](https://github.com/SaNCT-B/Stream-Tool/releases)
 2. Extract the contents to a folder
-3. Go into the `dist/` folder
-4. Double-click:
+3. Double-click:
    - `Stream Tool.exe` → launches the main app
    - `server.exe` → backend server (launched automatically by the app)
 
