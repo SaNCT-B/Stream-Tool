@@ -63,4 +63,4 @@ This will:
 - Compile `server.js` into `dist/server.exe` using `pkg`
 - Build the Python GUI into `dist/Stream Tool.exe` using PyInstaller
 
-🎁 After the script runs, your fully compiled app will be ready in the `/dist` folder.
+📁 After the script runs, your fully compiled app will be ready in the `/dist` folder.
