@@ -10,7 +10,7 @@ This tool includes:
 
 ## 👤 For Users
 
-### ✅ How to Use
+### ❓ How to Use
 
 1. Download the latest `StreamTool.zip` from the [Releases](https://github.com/SaNCT-B/Stream-Tool/releases)
 2. Extract the contents to a folder
@@ -63,4 +63,4 @@ This will:
 - Compile `server.js` into `dist/server.exe` using `pkg`
 - Build the Python GUI into `dist/Stream Tool.exe` using PyInstaller
 
-✅ After the script runs, your fully compiled app will be ready in the `/dist` folder.
+🎁 After the script runs, your fully compiled app will be ready in the `/dist` folder.
