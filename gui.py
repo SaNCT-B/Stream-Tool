@@ -1,14 +1,18 @@
 import sys
 import os
 import subprocess
-import tkinter as tk
-from tkinter import messagebox, filedialog, scrolledtext
-import requests
 import time
-import unicodedata
 import re
 import json
+import unicodedata
+
+import tkinter as tk
+from tkinter import messagebox, filedialog, scrolledtext
+
+import requests
+
 from listener import create_listener
+
 
 class UsernameCompiler:
     def __init__(self):
@@ -209,15 +213,19 @@ class UsernameCompiler:
             port = int(self.port_entry.get() or 8080)
         except ValueError:
             port = 8080
+        self.update_status("⏳ Starting server...", "orange")
+        self.root.after(100, lambda: self._defer_startup(port))
+
+    def _defer_startup(self, port):
         self.restart_backend(port)
-        self.root.deiconify()  # Show the window after full setup
+        self.root.deiconify()
 
 
     def retry_ws(self):
         if self.ws_manager:
             self.retry_button.config(state=tk.DISABLED)
             self.update_status("⏳ Retrying WebSocket connection...", "blue")
-            self.ws_manager.retry_connection()
+            self.ws_manager.retry_connection(wait_seconds=1)
 
     def on_close_window(self):
         try:
@@ -252,13 +260,19 @@ class UsernameCompiler:
             status_label.config(text="Streamer username is required.", fg="red")
             return
 
+        # Remove @ from beginning if present
+        username = username.lstrip("@")
+
+        # Format label display
+        label_display = f"@{username}" if platform == "tiktok" else username
+
         try:
             port = self.port_entry.get()
             res = requests.post(f"http://localhost:{port}/start", json={"username": username, "platform": platform})
             data = res.json()
 
             if res.status_code == 200 and data.get("success") == True:
-                status_label.config(text=f"Connected: @{username}", fg="green")
+                status_label.config(text=f"Connected: {label_display}", fg="green")
             else:
                 error_msg = data.get("error", "Connection failed")
                 status_label.config(text=error_msg, fg="red")
@@ -447,7 +461,7 @@ class UsernameCompiler:
             if getattr(sys, 'frozen', False):
                 base_path = sys._MEIPASS
                 server_path = os.path.join(base_path, 'server.exe')
-                proc = subprocess.Popen([server_path, str(port)])
+                proc = subprocess.Popen([server_path, str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
                 base_path = os.path.dirname(os.path.abspath(__file__))
                 server_path = os.path.join(base_path, 'server.js')
