@@ -5,6 +5,7 @@
 This tool includes:
 - A **Python GUI** built with Tkinter  
 - A **Node.js server** that handles WebSocket and platform connection logic
+- [Zerodytrash’s TikTok-Live-Connector](https://github.com/zerodytrash/TikTok-Live-Connector)
 
 ---
 
@@ -16,7 +17,7 @@ This tool includes:
 2. Extract the contents to a folder
 3. Double-click:
    - `Stream Tool.exe` → launches the main app
-   - `server.exe` → backend server (launched automatically by the app)
+   - `server.js` → backend server (launched automatically by the app - no action required)
 
 > 💡 You may be prompted to allow Node.js to run — click "Allow" if so.
 
@@ -28,16 +29,16 @@ This tool includes:
 
 Make sure you have the following installed:
 
-- **Python 3.10+**
-- **Node.js v18+**
-- **Python packages:**
+- [**Python 3.10+**](https://www.python.org/downloads/)
+- [**Node.js v18+**](https://nodejs.org/en/download)
+- Required Python packages:
 
   ```bash
   pip install pyinstaller websocket-client requests
   ```
 
-- **(Optional but recommended)** Node packager:
-
+- (Optional but recommended) Global Node packager (only needed if using `pkg`):
+  
   ```bash
   npm install -g pkg
   ```
@@ -60,7 +61,13 @@ This will:
 
 - Clean previous builds (`build/`, `dist/`, cache files)
 - Run `npm install` to restore Node dependencies
-- Compile `server.js` into `dist/server.exe` using `pkg`
+- Compile `server.js` (or copy it) into `dist/` as `server.exe` (optional)
 - Build the Python GUI into `dist/Stream Tool.exe` using PyInstaller
 
 After the script runs, your fully compiled app will be ready in the `/dist` folder.
+
+---
+
+## 📝 License
+
+MIT — use freely, modify responsibly.
