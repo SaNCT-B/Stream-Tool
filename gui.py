@@ -26,6 +26,7 @@ class UsernameCompiler:
         self.viewer_set = set()
         self.nickname_map = {}
         self.current_display_mode = "Unsanitized Names"
+        self.keyword_hidden = False
         
         self.setup_gui()
         self.setup_event_handlers()
@@ -94,20 +95,29 @@ class UsernameCompiler:
         self.twitch_status_label = tk.Label(twitch_column, text="", anchor="w", fg="red")
         self.twitch_status_label.pack()
 
+        # Row for the label and entry field (stacked vertically)
         keyword_row = tk.Frame(self.root)
         keyword_row.pack(pady=(10, 0))
 
         tk.Label(keyword_row, text="Keyword (case-insensitive):").pack()
         self.keyword_entry = tk.Entry(keyword_row, width=40)
         self.keyword_entry.pack()
+
         self.keyword_entry.bind("<Return>", lambda event: self.submit_keyword())
 
-        keyword_frame = tk.Frame(keyword_row)
+        # Separate frame for the buttons (Submit, Clear, Hide)
+        keyword_frame = tk.Frame(self.root)
         keyword_frame.pack(pady=(5, 10))
 
         tk.Button(keyword_frame, text="Submit", command=self.submit_keyword).pack(side=tk.LEFT, padx=5)
         tk.Button(keyword_frame, text="Clear", command=self.clear_keyword).pack(side=tk.LEFT, padx=5)
-        self.keyword_status_label = tk.Label(keyword_row, text="", anchor="w", fg="red")
+
+        # Add the toggle visibility button (no layout shift)
+        self.toggle_keyword_btn = tk.Button(keyword_frame, text="Hide", width=7, command=self.toggle_keyword_visibility)
+        self.toggle_keyword_btn.pack(side=tk.LEFT, padx=5)
+
+        # Status label under the buttons
+        self.keyword_status_label = tk.Label(self.root, text="", anchor="w", fg="red")
         self.keyword_status_label.pack()
 
         divider1 = tk.Frame(self.root, bg="black", height=2)
@@ -335,6 +345,15 @@ class UsernameCompiler:
             print(f"Error clearing keyword: {e}")
             pass
 
+    def toggle_keyword_visibility(self):
+        current_show = self.keyword_entry.cget("show")
+        if current_show == "":
+            self.keyword_entry.config(show="*")
+            self.toggle_keyword_btn.config(text="Show")
+        else:
+            self.keyword_entry.config(show="")
+            self.toggle_keyword_btn.config(text="Hide")
+
     def update_keyword_status(self, text, color="red"):
         self.keyword_status_label.config(text=text, fg=color)
 
@@ -361,7 +380,7 @@ class UsernameCompiler:
         for i, (name, platform) in enumerate(self.viewer_text.original_names):
             if i > 0:
                 self.viewer_text.insert(tk.END, ", ")
-            sanitized = self.sanitize_name(name).capitalize()
+            sanitized = self.sanitize_name(name)
             if sanitized:
                 start = self.viewer_text.index("end-1c")
                 self.viewer_text.insert(tk.END, sanitized)
@@ -378,7 +397,7 @@ class UsernameCompiler:
         for i, (name, platform) in enumerate(self.viewer_text.original_names):
             cleaned = self.sanitize_name(name)
             if cleaned:
-                first_word = cleaned.split()[0].capitalize()
+                first_word = cleaned.split()[0]
                 if first_word not in seen:
                     seen.add(first_word)
                     if i > 0 and self.viewer_text.get("1.0", tk.END).strip():
@@ -392,13 +411,14 @@ class UsernameCompiler:
         if self.current_display_mode == "First Word Only":
             sanitized_name = self.sanitize_name(name)
             if sanitized_name:
-                return sanitized_name.split()[0].capitalize()
+                return sanitized_name.split()[0]
         elif self.current_display_mode == "Sanitized Names":
             sanitized_name = self.sanitize_name(name)
             if sanitized_name:
-                return sanitized_name.capitalize()
+                return sanitized_name
         else:
             return name
+
 
     def update_viewer_list(self, new_name):
         formatted_name = self.format_name_for_display(new_name)
@@ -502,63 +522,13 @@ class ViewerList(scrolledtext.ScrolledText):
         self.tag_configure("twitch", foreground="#9146ff")  # Twitch purple
         self.original_names = []  # Store original names and their platforms
 
-    def add_viewer(self, name, platform):
-        # Store original name and platform when adding new viewer
-        self.original_names.append((name, platform))
-        
-        # Add to display with appropriate tag
-        if self.get("1.0", tk.END).strip():
-            self.insert(tk.END, ", ")
-        start = self.index("end-1c")
-        self.insert(tk.END, name)
-        end = self.index("end-1c")
-        self.tag_add(platform, start, end)
-
-def handle_websocket_message(self, message):
-    if message == 'clearViewers':
-        self.viewer_text.delete("1.0", tk.END)
-        self.viewer_set.clear()
-        self.nickname_map.clear()
-        self.viewer_text.original_names = []  # Clear original names too
-        return
-
-    try:
-        data = json.loads(message)
-        if data.get("type") == "chat":
-            nickname = data.get("viewerName", "").strip()
-            platform = data.get("platform", "")
-            
-            if nickname and nickname not in self.viewer_set:
-                self.viewer_set.add(nickname)
-                # Store original name and platform
-                self.viewer_text.original_names.append((nickname, platform))
-                
-                # Format display based on current mode
-                display_name = nickname
-                if self.current_display_mode == "Sanitized Names":
-                    display_name = self.sanitize_name(nickname).capitalize()
-                elif self.current_display_mode == "First Word Only":
-                    display_name = self.sanitize_name(nickname).split()[0].capitalize()
-                
-                current_text = self.viewer_text.get("1.0", tk.END).strip()
-                if current_text:
-                    self.viewer_text.insert(tk.END, ", ")
-                
-                start_index = self.viewer_text.index("end-1c")
-                self.viewer_text.insert(tk.END, display_name)
-                end_index = self.viewer_text.index("end-1c")
-                
-                if platform == "tiktok":
-                    self.viewer_text.tag_add("tiktok", start_index, end_index)
-                elif platform == "twitch":
-                    self.viewer_text.tag_add("twitch", start_index, end_index)
-                
-                self.viewer_text.see(tk.END)
-                
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+def add_viewer(self, display_name, platform):
+    if self.get("1.0", tk.END).strip():
+        self.insert(tk.END, ", ")
+    start = self.index("end-1c")
+    self.insert(tk.END, display_name)
+    end = self.index("end-1c")
+    self.tag_add(platform, start, end)
 
 if __name__ == "__main__":
     app = UsernameCompiler()
