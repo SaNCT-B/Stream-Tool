@@ -80,6 +80,23 @@ class UsernameCompiler:
         self.tiktok_status_label = tk.Label(tiktok_column, text="", anchor="w", fg="red")
         self.tiktok_status_label.pack()
 
+        # Overlay for hiding keyword in label
+        self.keyword_label_overlay = tk.Label(self.root, bg="lightgray")
+
+        def place_keyword_label_overlay():
+            try:
+                x = self.keyword_status_label.winfo_rootx() - self.root.winfo_rootx()
+                y = self.keyword_status_label.winfo_rooty() - self.root.winfo_rooty()
+                w = self.keyword_status_label.winfo_width()
+                h = self.keyword_status_label.winfo_height()
+                self.keyword_label_overlay.place(x=x, y=y, width=w, height=h)
+                self.keyword_label_overlay.lower()
+            except Exception as e:
+                print("Overlay error:", e)
+
+        self.root.after(200, place_keyword_label_overlay)
+
+
         twitch_column = tk.Frame(form_frame)
         twitch_column.pack(side=tk.LEFT, padx=10)
 
@@ -100,8 +117,22 @@ class UsernameCompiler:
         keyword_row.pack(pady=(10, 0))
 
         tk.Label(keyword_row, text="Keyword (case-insensitive):").pack()
-        self.keyword_entry = tk.Entry(keyword_row, width=40)
+        self.keyword_entry_container = tk.Frame(keyword_row)
+        self.keyword_entry_container.pack()
+
+        self.keyword_entry = tk.Entry(self.keyword_entry_container, width=40, font=("Arial", 12))
         self.keyword_entry.pack()
+
+        # Overlay for hiding keyword entry
+        self.keyword_overlay = tk.Label(
+            self.keyword_entry_container,
+            bg="lightgray",
+            width=40,
+            height=1
+        )
+        self.keyword_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.keyword_overlay.lower()  # Send behind initially
+
 
         self.keyword_entry.bind("<Return>", lambda event: self.submit_keyword())
 
@@ -116,9 +147,28 @@ class UsernameCompiler:
         self.toggle_keyword_btn = tk.Button(keyword_frame, text="Hide", width=7, command=self.toggle_keyword_visibility)
         self.toggle_keyword_btn.pack(side=tk.LEFT, padx=5)
 
-        # Status label under the buttons
+        # ✅ Define the missing keyword status label to fix crashes
         self.keyword_status_label = tk.Label(self.root, text="", anchor="w", fg="red")
         self.keyword_status_label.pack()
+
+
+        # Overlay for hiding keyword in label
+        self.keyword_label_overlay = tk.Label(
+            self.root,
+            bg="lightgray",
+        )
+        self.keyword_label_overlay.lower()  # Keep behind initially
+
+        # Schedule placement after widgets are laid out
+        def place_keyword_label_overlay():
+            x = self.keyword_status_label.winfo_rootx() - self.root.winfo_rootx()
+            y = self.keyword_status_label.winfo_rooty() - self.root.winfo_rooty()
+            w = self.keyword_status_label.winfo_width()
+            h = self.keyword_status_label.winfo_height()
+            self.keyword_label_overlay.place(x=x, y=y, width=w, height=h)
+
+        self.root.after(200, place_keyword_label_overlay)
+
 
         divider1 = tk.Frame(self.root, bg="black", height=2)
         divider1.pack(fill=tk.X, pady=10)
@@ -346,13 +396,24 @@ class UsernameCompiler:
             pass
 
     def toggle_keyword_visibility(self):
-        current_show = self.keyword_entry.cget("show")
-        if current_show == "":
-            self.keyword_entry.config(show="*")
-            self.toggle_keyword_btn.config(text="Show")
+        self.keyword_hidden = not self.keyword_hidden
+
+        if self.keyword_hidden:
+            self.toggle_keyword_btn.config(text="Unhide")
+            self.keyword_overlay.lift()
+            try:
+                x = self.keyword_status_label.winfo_rootx() - self.root.winfo_rootx()
+                y = self.keyword_status_label.winfo_rooty() - self.root.winfo_rooty()
+                w = self.keyword_status_label.winfo_width()
+                h = self.keyword_status_label.winfo_height()
+                self.keyword_label_overlay.place(x=x, y=y, width=w, height=h)
+                self.keyword_label_overlay.lift()
+            except Exception as e:
+                print("Toggle overlay error:", e)
         else:
-            self.keyword_entry.config(show="")
             self.toggle_keyword_btn.config(text="Hide")
+            self.keyword_overlay.lower()
+            self.keyword_label_overlay.place_forget()
 
     def update_keyword_status(self, text, color="red"):
         self.keyword_status_label.config(text=text, fg=color)
