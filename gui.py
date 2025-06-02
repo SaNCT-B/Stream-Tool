@@ -46,8 +46,7 @@ class UsernameCompiler:
         self.root.after(100, self.finish_startup)
 
     def setup_gui(self):
-        # Create GUI components...
-        # (Keep your existing GUI setup code here, but remove WebSocket-specific parts)
+        # Create GUI components
         port_frame = tk.Frame(self.root)
         port_frame.pack(pady=5)
 
@@ -69,7 +68,7 @@ class UsernameCompiler:
         tiktok_column.pack(side=tk.LEFT, padx=10)
 
         tk.Label(tiktok_column, text="TikTok Username:").pack()
-        self.tiktok_entry = tk.Entry(tiktok_column, width=25)
+        self.tiktok_entry = tk.Entry(tiktok_column, width=20, font=("Arial", 11))
         self.tiktok_entry.pack()
         self.tiktok_entry.bind("<Return>", lambda event: self.submit_username("tiktok"))
 
@@ -101,7 +100,7 @@ class UsernameCompiler:
         twitch_column.pack(side=tk.LEFT, padx=10)
 
         tk.Label(twitch_column, text="Twitch Username:").pack()
-        self.twitch_entry = tk.Entry(twitch_column, width=25)
+        self.twitch_entry = tk.Entry(twitch_column, width=20, font=("Arial", 11))
         self.twitch_entry.pack()
         self.twitch_entry.bind("<Return>", lambda event: self.submit_username("twitch"))
 
@@ -120,7 +119,7 @@ class UsernameCompiler:
         self.keyword_entry_container = tk.Frame(keyword_row)
         self.keyword_entry_container.pack()
 
-        self.keyword_entry = tk.Entry(self.keyword_entry_container, width=40, font=("Arial", 12))
+        self.keyword_entry = tk.Entry(self.keyword_entry_container, width=30, font=("Arial", 11))
         self.keyword_entry.pack()
 
         # Overlay for hiding keyword entry
@@ -228,10 +227,11 @@ class UsernameCompiler:
                     if current_text:
                         self.viewer_text.insert(tk.END, ", ")
                     
+                    display_name = self.get_display_name(nickname)
                     start_index = self.viewer_text.index("end-1c")
-                    self.viewer_text.insert(tk.END, nickname)
+                    self.viewer_text.insert(tk.END, display_name)
                     end_index = self.viewer_text.index("end-1c")
-                    
+
                     if platform == "tiktok":
                         self.viewer_text.tag_add("tiktok", start_index, end_index)
                     elif platform == "twitch":
@@ -244,8 +244,19 @@ class UsernameCompiler:
         except Exception as e:
             print(f"Unexpected error: {e}")
 
+    def get_display_name(self, name):
+        if self.current_display_mode == "Sanitized Names":
+            return self.sanitize_name(name)
+        elif self.current_display_mode == "First Word Only":
+            return name.split()[0]
+        elif self.current_display_mode == "Unsanitized Names":
+            return name  # Unsanitized format
+        return name  # Fallback
+
     def update_status(self, message, color):
         self.status_label.config(text=message, fg=color)
+        if any(word in message for word in ["Disconnected", "Error", "failed"]):
+            self.retry_button.config(state=tk.NORMAL)
 
     def restart_backend(self, port):
         # Cleanup existing connections
@@ -280,12 +291,12 @@ class UsernameCompiler:
         self.restart_backend(port)
         self.root.deiconify()
 
-
     def retry_ws(self):
         if self.ws_manager:
             self.retry_button.config(state=tk.DISABLED)
-            self.update_status("⏳ Retrying WebSocket connection...", "blue")
-            self.ws_manager.retry_connection(wait_seconds=1)
+            self.update_status("⏳ Restarting server and reconnecting...", "blue")
+            self.restart_server()
+            time.sleep(2)  # wait a bit for the server to boot
 
     def on_close_window(self):
         try:
@@ -352,6 +363,7 @@ class UsernameCompiler:
             pass
 
     def submit_keyword(self):
+        self.clear_viewers()
         keyword = self.keyword_entry.get().strip()
         if not keyword:
             self.update_keyword_status("Keyword is required.", "red")
@@ -374,6 +386,12 @@ class UsernameCompiler:
                 self.update_keyword_status("❌ Failed to set keyword", "red")
         except Exception:
             self.update_keyword_status("❌ Could not reach server", "red")
+
+    def clear_viewers(self):
+        self.viewer_text.delete("1.0", tk.END)
+        self.viewer_set.clear()
+        self.nickname_map.clear()
+        self.viewer_text.original_names = []
 
     def clear_keyword(self):
         self.keyword_entry.delete(0, tk.END)
@@ -575,6 +593,17 @@ class UsernameCompiler:
         except Exception as e:
             print("Failed to start server:", e)
             return None
+        
+    def restart_server(self):
+        try:
+            if self.server_process:
+                self.server_process.terminate()
+                self.server_process.wait()
+            time.sleep(2)
+            self.server_process = self.start_server(int(self.port_entry.get()))
+        except Exception as e:
+            self.update_status(f"❌ Error restarting server: {e}", "red")
+
 
 class ViewerList(scrolledtext.ScrolledText):
     def __init__(self, master, **kwargs):

@@ -5,7 +5,7 @@ const { WebcastPushConnection } = require('tiktok-live-connector');
 const tmi = require('tmi.js');
 
 const app = express();
-const port = process.argv[2] || 8080; // Change default port to 8080
+const port = process.argv[2] || 8080; // Default port set to 8080
 
 let currentKeyword = '';
 let viewersSet = new Set();
@@ -70,8 +70,6 @@ wss.on('connection', ws => {
             username.style.color = data.color;
             username.textContent = data.viewerName;
             
-            // Add the username to your textarea or display area
-            // Make sure to use the styled username element
         }
     };
 });
@@ -153,38 +151,65 @@ app.post('/start', async (req, res) => {
     const { username, platform } = req.body;
 
     if (!username || !platform) {
-        return res.status(400).json({ success: false, error: 'Missing username or platform' });
+        return res.status(400).json({ success: false, error: "Missing username or platform" });
     }
 
-    if (platform === 'tiktok') {
-        if (tiktokConnection) {
-            tiktokConnection.disconnect();
+    let responded = false;
+    function sendOnce(statusCode, payload) {
+        if (!responded) {
+            responded = true;
+            res.status(statusCode).json(payload);
         }
+    }
 
-        tiktokConnection = new WebcastPushConnection(username);
-
-        let responded = false;
-        function sendOnce(statusCode, payload) {
-            if (!responded) {
-                responded = true;
-                res.status(statusCode).json(payload);
+    try {
+        if (platform === "tiktok") {
+            if (tiktokConnection) {
+                tiktokConnection.disconnect();
             }
-        }
 
-        try {
-            await tiktokConnection.connect();
-            console.log(`Connected to TikTok user: ${username}`);
+            tiktokConnection = new WebcastPushConnection(username);
 
-            // In the TikTok chat handler
-            tiktokConnection.on('chat', (data) => {
-                const user = data.nickname || data.uniqueId || 'Unknown';
-                const text = data.comment || '';
-                console.log(`\x1b[32m[💬]\x1b[0m ${user}: \x1b[32m${text}\x1b[0m`);  // Darker green for TikTok
+            try {
+                await tiktokConnection.connect();
+                console.log(`Connected to TikTok user: ${username}`);
 
-                if (currentKeyword) {
-                    const matcher = createKeywordMatcher(currentKeyword);
-                    if (matcher.test(text)) {
-                        if (!viewersSet.has(user)) {
+                const timeout = setTimeout(() => {
+                    console.log("❌ No viewer data received, assuming user is not live.");
+                    tiktokConnection.disconnect();
+                    sendOnce(400, { success: false, error: "User is not live" });
+                }, 5000);
+
+                tiktokConnection.on('roomUser', (data) => {
+                    const viewerCount = data?.viewerCount ?? 0;
+                    if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+                        wsClient.send(JSON.stringify({
+                            type: 'viewerCount',
+                            platform: 'tiktok',
+                            count: viewerCount
+                        }));
+                    }
+
+                    if (!responded) {
+                        clearTimeout(timeout);
+                        sendOnce(200, { success: true });
+                    }
+                });
+
+                tiktokConnection.once('streamEnd', () => {
+                    console.log("🔴 Stream ended.");
+                    clearTimeout(timeout);
+                    tiktokConnection.disconnect();
+                    sendOnce(400, { success: false, error: "User is not live" });
+                });
+
+                tiktokConnection.on('chat', (data) => {
+                    const user = data.nickname || data.uniqueId || 'Unknown';
+                    const text = data.comment || '';
+                    console.log(`\x1b[32m[💬]\x1b[0m ${user}: \x1b[32m${text}\x1b[0m`);
+                    if (currentKeyword) {
+                        const matcher = createKeywordMatcher(currentKeyword);
+                        if (matcher.test(text) && !viewersSet.has(user)) {
                             viewersSet.add(user);
                             if (wsClient && wsClient.readyState === WebSocket.OPEN) {
                                 wsClient.send(JSON.stringify({
@@ -192,77 +217,32 @@ app.post('/start', async (req, res) => {
                                     viewerName: user,
                                     message: text,
                                     platform: 'tiktok',
-                                    color: '#00b400'  // Dark green hex color
+                                    color: '#00b400'
                                 }));
                             }
                         }
                     }
-                }
-            });
+                });
 
-            // Modify the TikTok connection section
-            const timeout = setTimeout(() => {
-                console.log("❌ No viewer data received, assuming user is not live.");
-                tiktokConnection.disconnect();
+            } catch (err) {
+                console.log("❌ Error connecting to TikTok:", err);
                 sendOnce(400, { success: false, error: "User is not live" });
-            }, 5000); // 5 second maximum timeout
-
-            // Update to handle viewer counts immediately
-            tiktokConnection.on('roomUser', (data) => {
-                const viewerCount = data?.viewerCount || 0;
-                
-                // Send viewer count update to GUI
-                if (wsClient && wsClient.readyState === WebSocket.OPEN) {
-                    wsClient.send(JSON.stringify({
-                        type: 'viewerCount',
-                        platform: 'tiktok',
-                        count: viewerCount
-                    }));
-                }
-
-                // Handle initial connection as soon as we get data
-                if (!responded) {
-                    clearTimeout(timeout);
-                    if (viewerCount >= 0) {
-                        sendOnce(200, { success: true });
-                    } else {
-                        tiktokConnection.disconnect();
-                        sendOnce(400, { success: false, error: "User is not live" });
-                    }
-                }
-            });
-
-            tiktokConnection.once('streamEnd', () => {
-                console.log("🔴 Stream ended event received.");
-                clearTimeout(timeout);
-                tiktokConnection.disconnect();
-                sendOnce(400, { success: false, error: "User is not live" });
-            });
-
-        } catch (err) {
-            console.log("❌ Error connecting to TikTok:", err);
-            sendOnce(400, { success: false, error: "User is not live" });
-        }
-        return;
-    }
-
-    if (platform === 'twitch') {
-        if (twitchClient) {
-            await twitchClient.disconnect();
+            }
+            return;
         }
 
-        twitchClient = new tmi.Client({
-            channels: [username]
-        });
+        if (platform === "twitch") {
+            if (twitchClient) {
+                await twitchClient.disconnect();
+            }
 
-        try {
-            await twitchClient.connect();
-            console.log(`Connected to Twitch user: ${username}`);
+            twitchClient = new tmi.Client({
+                channels: [username]
+            });
 
-            // In the Twitch message handler
             twitchClient.on('message', (channel, tags, message, self) => {
                 const user = tags['display-name'] || tags.username;
-                console.log(`\x1b[35m[💬]\x1b[0m ${user}: \x1b[35m${message}\x1b[0m`);  // Purple color for Twitch
+                console.log(`\x1b[35m[💬]\x1b[0m ${user}: \x1b[35m${message}\x1b[0m`);
 
                 if (currentKeyword) {
                     const matcher = createKeywordMatcher(currentKeyword);
@@ -275,7 +255,7 @@ app.post('/start', async (req, res) => {
                                     viewerName: user,
                                     message: message,
                                     platform: 'twitch',
-                                    color: '#9146ff'  // Twitch purple hex color
+                                    color: '#9146ff'
                                 }));
                             }
                         }
@@ -283,16 +263,33 @@ app.post('/start', async (req, res) => {
                 }
             });
 
-            res.status(200).json({ success: true });
-        } catch (err) {
-            console.log("❌ Error connecting to Twitch:", err);
-            res.status(400).json({ success: false, error: "Failed to connect to Twitch" });
+            await twitchClient.connect();
+            console.log(`Connected to Twitch user: ${username}`);
+            sendOnce(200, { success: true });
+            return;
         }
-        return;
-    }
 
-    res.status(400).json({ success: false, error: 'Unsupported platform' });
+        // If neither TikTok nor Twitch matched
+        sendOnce(400, { success: false, error: "Unknown platform" });
+
+    } catch (err) {
+        console.error("❌ Error connecting to platform:", err);
+        let errorMessage = "Unknown error";
+
+        if (err?.reason === "Sign Error") {
+            errorMessage = "❌ TikTok signing error, try again later.";
+        } else if (err?.message?.includes("user_not_found")) {
+            errorMessage = "❌ TikTok user not found or not live.";
+        } else if (err?.message?.includes("ExtractRoomIdError")) {
+            errorMessage = "❌ Could not extract Room ID. User may not be live.";
+        } else if (err?.message) {
+            errorMessage = err.message;
+        }
+
+        sendOnce(500, { success: false, error: errorMessage });
+    }
 });
+
 
 // Set keyword
 app.post('/keyword', (req, res) => {

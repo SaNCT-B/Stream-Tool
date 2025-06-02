@@ -46,12 +46,16 @@ class WebSocketManager:
         logger.error(f"❌ WebSocket error: {error}")
         if self.status_callback:
             self.status_callback(f"❌ WebSocket Error: {error}", "red")
+            if hasattr(self, 'gui') and hasattr(self.gui, 'retry_button'):
+                self.gui.retry_button.config(state=tk.NORMAL)
 
     def on_close(self, ws, close_status_code, close_msg):
         self.connected = False
         print("🔴 WebSocket connection closed")
         if self.status_callback:
             self.status_callback("🔴 WebSocket Disconnected", "red")
+            if hasattr(self, 'gui') and hasattr(self.gui, 'retry_button'):
+                self.gui.retry_button.config(state=tk.NORMAL)
 
     def connect(self):
         if self.connected:
