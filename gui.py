@@ -5,6 +5,7 @@ import time
 import re
 import json
 import unicodedata
+import threading
 
 import tkinter as tk
 from tkinter import messagebox, filedialog, scrolledtext
@@ -13,191 +14,137 @@ import requests
 
 from listener import create_listener
 
-
 class UsernameCompiler:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.withdraw()  # Hide window until everything is set up
+        self.root.withdraw()
         self.root.title("Stream Tool")
-        
-        # Initialize instance variables
+
         self.ws_manager = None
         self.server_process = None
         self.viewer_set = set()
         self.nickname_map = {}
         self.current_display_mode = "Unsanitized Names"
         self.keyword_hidden = False
-        
+
         self.setup_gui()
         self.setup_event_handlers()
-        
-        # Update initial status to show attempting to connect
+
         self.status_label.config(text="⏳ Attempting to connect...", fg="orange")
-        
-        # After GUI is set up, get initial window size
-        self.root.update_idletasks()  # Ensure all widgets are rendered
-        initial_width = self.root.winfo_width()
-        initial_height = self.root.winfo_height()
-        
-        # Set minimum size to prevent window becoming smaller than initial size
-        self.root.minsize(initial_width, initial_height)
-        
-        # Finish setup and show GUI after everything is ready
-        self.root.after(100, self.finish_startup)
+
+        self.root.update_idletasks()
+        self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
+
+        threading.Thread(target=self.finish_startup, daemon=True).start()
 
     def setup_gui(self):
-        # Create GUI components
+        def make_button(parent, text, cmd):
+            return tk.Button(parent, text=text, command=cmd)
+
         port_frame = tk.Frame(self.root)
         port_frame.pack(pady=5)
-
         tk.Label(port_frame, text="Port:").pack(side=tk.LEFT)
         self.port_entry = tk.Entry(port_frame, width=6)
-        self.port_entry.insert(0, "8080")  # Default port
+        self.port_entry.insert(0, "8080")
         self.port_entry.pack(side=tk.LEFT, padx=5)
+        make_button(port_frame, "Submit", self.submit_port).pack(side=tk.LEFT, padx=5)
+        self.port_entry.bind("<Return>", lambda e: self.submit_port())
 
-        tk.Button(port_frame, text="Submit", command=lambda: self.submit_port()).pack(side=tk.LEFT, padx=5)
-        self.port_entry.bind("<Return>", lambda event: self.submit_port())
-
-        divider0 = tk.Frame(self.root, bg="black", height=2)
-        divider0.pack(fill=tk.X, pady=10)
+        tk.Frame(self.root, bg="black", height=2).pack(fill=tk.X, pady=10)
 
         form_frame = tk.Frame(self.root)
         form_frame.pack()
 
-        tiktok_column = tk.Frame(form_frame)
-        tiktok_column.pack(side=tk.LEFT, padx=10)
+        self._setup_platform_column(form_frame, "TikTok")
+        self._setup_platform_column(form_frame, "Twitch")
 
-        tk.Label(tiktok_column, text="TikTok Username:").pack()
-        self.tiktok_entry = tk.Entry(tiktok_column, width=20, font=("Arial", 11))
-        self.tiktok_entry.pack()
-        self.tiktok_entry.bind("<Return>", lambda event: self.submit_username("tiktok"))
-
-        tiktok_frame = tk.Frame(tiktok_column)
-        tiktok_frame.pack(pady=(5, 10))
-        tk.Button(tiktok_frame, text="Submit", command=lambda: self.submit_username("tiktok")).pack(side=tk.LEFT, padx=5)
-        tk.Button(tiktok_frame, text="Clear", command=lambda: self.clear_username("tiktok")).pack(side=tk.LEFT, padx=5)
-        self.tiktok_status_label = tk.Label(tiktok_column, text="", anchor="w", fg="red")
-        self.tiktok_status_label.pack()
-
-        # Overlay for hiding keyword in label
-        self.keyword_label_overlay = tk.Label(self.root, bg="lightgray")
-
-        def place_keyword_label_overlay():
-            try:
-                x = self.keyword_status_label.winfo_rootx() - self.root.winfo_rootx()
-                y = self.keyword_status_label.winfo_rooty() - self.root.winfo_rooty()
-                w = self.keyword_status_label.winfo_width()
-                h = self.keyword_status_label.winfo_height()
-                self.keyword_label_overlay.place(x=x, y=y, width=w, height=h)
-                self.keyword_label_overlay.lower()
-            except Exception as e:
-                print("Overlay error:", e)
-
-        self.root.after(200, place_keyword_label_overlay)
-
-
-        twitch_column = tk.Frame(form_frame)
-        twitch_column.pack(side=tk.LEFT, padx=10)
-
-        tk.Label(twitch_column, text="Twitch Username:").pack()
-        self.twitch_entry = tk.Entry(twitch_column, width=20, font=("Arial", 11))
-        self.twitch_entry.pack()
-        self.twitch_entry.bind("<Return>", lambda event: self.submit_username("twitch"))
-
-        twitch_frame = tk.Frame(twitch_column)
-        twitch_frame.pack(pady=(5, 10))
-        tk.Button(twitch_frame, text="Submit", command=lambda: self.submit_username("twitch")).pack(side=tk.LEFT, padx=5)
-        tk.Button(twitch_frame, text="Clear", command=lambda: self.clear_username("twitch")).pack(side=tk.LEFT, padx=5)
-        self.twitch_status_label = tk.Label(twitch_column, text="", anchor="w", fg="red")
-        self.twitch_status_label.pack()
-
-        # Row for the label and entry field (stacked vertically)
         keyword_row = tk.Frame(self.root)
         keyword_row.pack(pady=(10, 0))
-
         tk.Label(keyword_row, text="Keyword (case-insensitive):").pack()
+
         self.keyword_entry_container = tk.Frame(keyword_row)
         self.keyword_entry_container.pack()
-
         self.keyword_entry = tk.Entry(self.keyword_entry_container, width=30, font=("Arial", 11))
         self.keyword_entry.pack()
-
-        # Overlay for hiding keyword entry
-        self.keyword_overlay = tk.Label(
-            self.keyword_entry_container,
-            bg="lightgray",
-            width=40,
-            height=1
-        )
+        self.keyword_overlay = tk.Label(self.keyword_entry_container, bg="lightgray", width=40, height=1)
         self.keyword_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.keyword_overlay.lower()  # Send behind initially
+        self.keyword_overlay.lower()
+        self.keyword_entry.bind("<Return>", lambda e: self.submit_keyword())
 
-
-        self.keyword_entry.bind("<Return>", lambda event: self.submit_keyword())
-
-        # Separate frame for the buttons (Submit, Clear, Hide)
         keyword_frame = tk.Frame(self.root)
         keyword_frame.pack(pady=(5, 10))
-
-        tk.Button(keyword_frame, text="Submit", command=self.submit_keyword).pack(side=tk.LEFT, padx=5)
-        tk.Button(keyword_frame, text="Clear", command=self.clear_keyword).pack(side=tk.LEFT, padx=5)
-
-        # Add the toggle visibility button (no layout shift)
+        make_button(keyword_frame, "Submit", self.submit_keyword).pack(side=tk.LEFT, padx=5)
+        make_button(keyword_frame, "Clear", self.clear_keyword).pack(side=tk.LEFT, padx=5)
         self.toggle_keyword_btn = tk.Button(keyword_frame, text="Hide", width=7, command=self.toggle_keyword_visibility)
         self.toggle_keyword_btn.pack(side=tk.LEFT, padx=5)
 
-        # ✅ Define the missing keyword status label to fix crashes
         self.keyword_status_label = tk.Label(self.root, text="", anchor="w", fg="red")
         self.keyword_status_label.pack()
+        self.keyword_label_overlay = tk.Label(self.root, bg="lightgray")
+        self.keyword_label_overlay.lower()
+        self.root.after(200, self._place_keyword_label_overlay)
 
+        tk.Frame(self.root, bg="black", height=2).pack(fill=tk.X, pady=10)
+        tk.Label(self.root, text="Display Format:").pack()
+        name_button_frame = tk.Frame(self.root)
+        name_button_frame.pack(pady=5)
 
-        # Overlay for hiding keyword in label
-        self.keyword_label_overlay = tk.Label(
-            self.root,
-            bg="lightgray",
-        )
-        self.keyword_label_overlay.lower()  # Keep behind initially
+        make_button(name_button_frame, "Unsanitized Names", self.show_unsanitized_names).pack(side=tk.LEFT, padx=5)
+        make_button(name_button_frame, "Sanitized Names", self.show_sanitized_name).pack(side=tk.LEFT, padx=5)
+        make_button(name_button_frame, "First Word Only", self.show_first_word).pack(side=tk.LEFT, padx=5)
 
-        # Schedule placement after widgets are laid out
-        def place_keyword_label_overlay():
+        tk.Frame(self.root, bg="black", height=2).pack(fill=tk.X, pady=10)
+        tk.Label(self.root, text="Viewer Names:").pack()
+        self.viewer_text = ViewerList(self.root, height=10, width=50, bg='white')
+        self.viewer_text.original_names = []
+        self.viewer_text.pack()
+
+        bottom_frame = tk.Frame(self.root)
+        bottom_frame.pack(pady=10)
+        make_button(bottom_frame, "Copy List", self.copy_list).pack(side=tk.LEFT, padx=5)
+        make_button(bottom_frame, "Save List", self.save_to_file).pack(side=tk.LEFT, padx=5)
+        make_button(bottom_frame, "Clear All", self.clear_all).pack(side=tk.LEFT, padx=5)
+
+        self.retry_button = make_button(bottom_frame, "Reconnect", self.retry_ws)
+        self.retry_button.config(state=tk.DISABLED)
+        self.retry_button.pack(side=tk.LEFT, padx=5)
+
+        self.status_label = tk.Label(self.root, text="🔴 Not connected", anchor="center", justify="center", fg="red")
+        self.status_label.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(10, 5))
+
+    def _place_keyword_label_overlay(self):
+        try:
             x = self.keyword_status_label.winfo_rootx() - self.root.winfo_rootx()
             y = self.keyword_status_label.winfo_rooty() - self.root.winfo_rooty()
             w = self.keyword_status_label.winfo_width()
             h = self.keyword_status_label.winfo_height()
             self.keyword_label_overlay.place(x=x, y=y, width=w, height=h)
+        except Exception as e:
+            print("Overlay error:", e)
 
-        self.root.after(200, place_keyword_label_overlay)
+    def _setup_platform_column(self, parent, platform):
+        lower = platform.lower()
+        column = tk.Frame(parent)
+        column.pack(side=tk.LEFT, padx=10)
+        tk.Label(column, text=f"{platform} Username:").pack()
+        entry = tk.Entry(column, width=20, font=("Arial", 11))
+        entry.pack()
+        entry.bind("<Return>", lambda e: self.submit_username(lower))
 
+        frame = tk.Frame(column)
+        frame.pack(pady=(5, 10))
+        tk.Button(frame, text="Submit", command=lambda: self.submit_username(lower)).pack(side=tk.LEFT, padx=5)
+        tk.Button(frame, text="Clear", command=lambda: self.clear_username(lower)).pack(side=tk.LEFT, padx=5)
 
-        divider1 = tk.Frame(self.root, bg="black", height=2)
-        divider1.pack(fill=tk.X, pady=10)
+        label = tk.Label(column, text="", anchor="w", fg="red")
+        label.pack()
 
-        tk.Label(self.root, text="Display Format:").pack()
-        name_button_frame = tk.Frame(self.root)
-        name_button_frame.pack(pady=5)
-
-        tk.Button(name_button_frame, text="Unsanitized Names", command=self.show_unsanitized_names).pack(side=tk.LEFT, padx=5)
-        tk.Button(name_button_frame, text="Sanitized Names", command=self.show_sanitized_name).pack(side=tk.LEFT, padx=5)
-        tk.Button(name_button_frame, text="First Word Only", command=self.show_first_word).pack(side=tk.LEFT, padx=5)
-
-        divider2 = tk.Frame(self.root, bg="black", height=2)
-        divider2.pack(fill=tk.X, pady=10)
-
-        tk.Label(self.root, text="Viewer Names:").pack()
-        self.viewer_text = ViewerList(self.root, height=10, width=50, bg='white')
-        self.viewer_text.pack()
-
-        bottom_frame = tk.Frame(self.root)
-        bottom_frame.pack(pady=10)
-
-        tk.Button(bottom_frame, text="Copy List", command=self.copy_list).pack(side=tk.LEFT, padx=5)
-        tk.Button(bottom_frame, text="Save List", command=self.save_to_file).pack(side=tk.LEFT, padx=5)
-        tk.Button(bottom_frame, text="Clear All", command=self.clear_all).pack(side=tk.LEFT, padx=5)
-
-        self.retry_button = tk.Button(bottom_frame, text="Reconnect", command=self.retry_ws, state=tk.DISABLED)
-        self.status_label = tk.Label(self.root, text="🔴 Not connected", anchor="center", justify="center", fg="red")
-        self.status_label.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(10, 5))
-        self.retry_button.pack(side=tk.LEFT, padx=5)
+        if lower == "tiktok":
+            self.tiktok_entry = entry
+            self.tiktok_status_label = label
+        else:
+            self.twitch_entry = entry
+            self.twitch_status_label = label
 
     def setup_event_handlers(self):
         self.root.protocol("WM_DELETE_WINDOW", self.on_close_window)
@@ -248,15 +195,22 @@ class UsernameCompiler:
         if self.current_display_mode == "Sanitized Names":
             return self.sanitize_name(name)
         elif self.current_display_mode == "First Word Only":
-            return name.split()[0]
+            sanitized = self.sanitize_name(name)
+            if sanitized:
+                return sanitized.split()[0]
+            return ""
         elif self.current_display_mode == "Unsanitized Names":
-            return name  # Unsanitized format
-        return name  # Fallback
+            return name
+        return name
+
 
     def update_status(self, message, color):
         self.status_label.config(text=message, fg=color)
+        # Enable the button if not connected, disable if connected
         if any(word in message for word in ["Disconnected", "Error", "failed"]):
             self.retry_button.config(state=tk.NORMAL)
+        elif any(word in message for word in ["connected", "Started server", "Listening"]):
+            self.retry_button.config(state=tk.DISABLED)
 
     def restart_backend(self, port):
         # Cleanup existing connections
@@ -293,7 +247,6 @@ class UsernameCompiler:
 
     def retry_ws(self):
         if self.ws_manager:
-            self.retry_button.config(state=tk.DISABLED)
             self.update_status("⏳ Restarting server and reconnecting...", "blue")
             self.restart_server()
             time.sleep(2)  # wait a bit for the server to boot
@@ -344,9 +297,12 @@ class UsernameCompiler:
 
             if res.status_code == 200 and data.get("success") == True:
                 status_label.config(text=f"Connected: {label_display}", fg="green")
+            elif res.status_code == 400:
+                status_label.config(text=f"🔴 User is not live", fg="red")
+            elif res.status_code == 503:
+                status_label.config(text=f"⚠️ TikTok sign server failed (504). Try again shortly.", fg="orange")
             else:
-                error_msg = data.get("error", "Connection failed")
-                status_label.config(text=error_msg, fg="red")
+                status_label.config(text=f"❌ Failed to connect", fg="red")
         except Exception as e:
             status_label.config(text=f"Could not connect: {str(e)}", fg="red")
 
