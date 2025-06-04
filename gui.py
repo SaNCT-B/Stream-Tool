@@ -284,27 +284,45 @@ class UsernameCompiler:
             status_label.config(text="Streamer username is required.", fg="red")
             return
 
-        # Remove @ from beginning if present
         username = username.lstrip("@")
-
-        # Format label display
         label_display = f"@{username}" if platform == "tiktok" else username
 
+        status_label.config(text="⏳ Connecting...", fg="orange")
+
+        # 🧵 Run connection in background thread to avoid UI freeze
+        thread = threading.Thread(
+            target=lambda: self._submit_username_thread(platform, username, label_display, status_label),
+            daemon=True
+        )
+        thread.start()
+
+    def _submit_username_thread(self, platform, username, label_display, status_label):
         try:
             port = self.port_entry.get()
-            res = requests.post(f"http://localhost:{port}/start", json={"username": username, "platform": platform})
+            res = requests.post(
+                f"http://localhost:{port}/start",
+                json={"username": username, "platform": platform},
+                timeout=5
+            )
             data = res.json()
 
-            if res.status_code == 200 and data.get("success") == True:
-                status_label.config(text=f"Connected: {label_display}", fg="green")
-            elif res.status_code == 400:
-                status_label.config(text=f"🔴 User is not live", fg="red")
-            elif res.status_code == 503:
-                status_label.config(text=f"⚠️ TikTok sign server failed (504). Try again shortly.", fg="orange")
-            else:
-                status_label.config(text=f"❌ Failed to connect", fg="red")
+            def update_status():
+                if res.status_code == 200 and data.get("success") is True:
+                    status_label.config(text=f"Connected: {label_display}", fg="green")
+                elif res.status_code == 400:
+                    status_label.config(text="🔴 User is not live", fg="red")
+                elif res.status_code == 503:
+                    status_label.config(text="⚠️ TikTok sign server failed (504). Try again shortly.", fg="orange")
+                else:
+                    status_label.config(text="❌ Failed to connect", fg="red")
+
+            self.root.after(0, update_status)
+
         except Exception as e:
-            status_label.config(text=f"Could not connect: {str(e)}", fg="red")
+            self.root.after(0, lambda: status_label.config(
+                text=f"Could not connect", fg="red"
+            ))
+
 
     def clear_username(self, platform):
         entry = self.tiktok_entry if platform == "tiktok" else self.twitch_entry
@@ -524,7 +542,7 @@ class UsernameCompiler:
 
             print("Waiting for server to start...")
             
-            def wait_for_port(port, timeout=10):  # Increased timeout
+            def wait_for_port(port, timeout=8):
                 start = time.time()
                 retry_interval = 0.5  # Half second between retries
                 
@@ -532,7 +550,7 @@ class UsernameCompiler:
                     try:
                         # Try to make an HTTP request to the server
                         requests.get(f"http://localhost:{port}/health", timeout=1)
-                        print("Server started successfully on port", port)
+                        print("⚡Server started successfully on port", port)
                         return True
                     except requests.RequestException:
                         time.sleep(retry_interval)

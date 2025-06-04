@@ -107,5 +107,5 @@ class WebSocketManager:
 
 def create_listener(port, message_callback=None, status_callback=None):
     ws_manager = WebSocketManager(port, message_callback, status_callback)
-    threading.Thread(target=ws_manager.connect, daemon=True).start()
+    threading.Thread(target=lambda: (time.sleep(0.1), ws_manager.connect()), daemon=True).start()
     return ws_manager
