@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stream Tool Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      background: rgba(30,30,30,0.5);
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+      color: white;
+    }
+  
+    #container {
+      min-width: 25ch;
+      max-width: 28ch;
+      min-height: 10.5em;
+      max-height: 10.5em;
+      overflow: hidden;
+      border-radius: 20px;
+      background: rgba(30,30,30,0.5);
+      box-shadow: 0 0 20px #0008;
+      user-select: none;
+      position: relative;
+      padding: 0.5em 0.5em 0.5em 0.8em; /* top right bottom left */
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+  
+    #marquee {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+  
+    #scroll-wrapper {
+      display: flex;
+      flex-direction: column;
+      /* animation: scrollUp var(--duration, 20s) linear infinite; */
+    }
+  
+    .names {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
+  
+    .name {
+      font-size: 1.1em;
+      font-weight: bold;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+  
+    .tiktok {
+      color: #39ff14;
+    }
+  
+    .twitch {
+      color: #9146ff;
+    }
+  
+    @keyframes scrollUp {
+      from { transform: translateY(0); }
+      to { transform: translateY(-50%); }
+    }
+  </style>  
+</head>
+<body>
+  <div id="container">
+    <div id="marquee">
+      <div id="scroll-wrapper">
+        <div class="names" id="names1"></div>
+        <div class="names" id="names2"></div>
+      </div>
+    </div>    
+  </div>
+  <script>
+    const names1 = document.getElementById('names1');
+    const names2 = document.getElementById('names2');
+    const marquee = document.getElementById('marquee');
+    const scrollWrapper = document.getElementById('scroll-wrapper');
+    let viewers = [];
+    let animationFrame;
+    let scrollSpeed = 0.1; // px per frame
+    let isScrolling = false;
+    let lastScrollTop = 0;
+
+    function renderNames(keepScroll = false) {
+      names1.innerHTML = '';
+      viewers.forEach(v => {
+        const div = document.createElement('div');
+        div.textContent = v.name;
+        div.className = 'name ' + (v.platform === 'tiktok' ? 'tiktok' : (v.platform === 'twitch' ? 'twitch' : ''));
+        names1.appendChild(div);
+      });
+      const totalHeight = names1.offsetHeight;
+      const containerHeight = marquee.offsetHeight;
+      // Only duplicate and scroll if more than one name and overflow
+      if (viewers.length > 1 && totalHeight > containerHeight) {
+        names2.innerHTML = names1.innerHTML;
+        scrollWrapper.style.animation = '';
+        if (!isScrolling) {
+          isScrolling = true;
+          startScroll();
+        }
+      } else {
+        names2.innerHTML = '';
+        stopScroll();
+        scrollWrapper.style.transform = 'translateY(0)';
+      }
+      if (keepScroll && isScrolling) {
+        scrollWrapper.style.transform = `translateY(-${lastScrollTop}px)`;
+      }
+    }
+
+    function startScroll() {
+      let scrollTop = lastScrollTop;
+      function step() {
+        const totalHeight = names1.offsetHeight;
+        const containerHeight = marquee.offsetHeight;
+        scrollTop += scrollSpeed;
+        if (scrollTop >= totalHeight) {
+          scrollTop = 0;
+        }
+        scrollWrapper.style.transform = `translateY(-${scrollTop}px)`;
+        lastScrollTop = scrollTop;
+        animationFrame = requestAnimationFrame(step);
+      }
+      animationFrame = requestAnimationFrame(step);
+    }
+
+    function stopScroll() {
+      isScrolling = false;
+      cancelAnimationFrame(animationFrame);
+      lastScrollTop = 0;
+    }
+
+    function fetchViewers() {
+      fetch('/overlay-viewers')
+        .then(r => r.json())
+        .then(data => {
+          const oldLen = viewers.length;
+          viewers = data.viewers || [];
+          // If new names are added, keep scroll position
+          renderNames(viewers.length > oldLen);
+        });
+    }
+    // WebSocket for overlay clearing
+    let ws;
+    function setupOverlayWS() {
+      ws = new WebSocket(`ws://${window.location.hostname}:8080`);
+      ws.onmessage = function(event) {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'control' && msg.action === 'clearViewers') {
+            viewers = [];
+            renderNames();
+          }
+        } catch (e) {
+          if (event.data === 'clearViewers') {
+            viewers = [];
+            renderNames();
+          }
+        }
+      };
+      ws.onclose = function() {
+        setTimeout(setupOverlayWS, 2000);
+      };
+    }
+    setupOverlayWS();
+    setInterval(fetchViewers, 1000);
+    fetchViewers();
+  </script>
+</body>
+</html>

@@ -14,6 +14,17 @@ import requests
 
 from listener import create_listener
 
+ERROR_LOG = 'error_output.log'
+# Overwrite error log at startup
+with open(ERROR_LOG, 'w', encoding='utf-8') as f:
+    pass
+def log_error(err):
+    try:
+        with open(ERROR_LOG, 'a', encoding='utf-8') as f:
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {err}\n")
+    except Exception:
+        pass
+
 class UsernameCompiler:
     def __init__(self):
         self.root = tk.Tk()
@@ -121,6 +132,7 @@ class UsernameCompiler:
             self.keyword_label_overlay.place(x=x, y=y, width=w, height=h)
         except Exception as e:
             print("Overlay error:", e)
+            log_error(e)
 
     def _setup_platform_column(self, parent, platform):
         lower = platform.lower()
@@ -188,8 +200,10 @@ class UsernameCompiler:
                     
         except json.JSONDecodeError as e:
             print(f"JSON decode error: {e}")
+            log_error(e)
         except Exception as e:
             print(f"Unexpected error: {e}")
+            log_error(e)
 
     def get_display_name(self, name):
         if self.current_display_mode == "Sanitized Names":
@@ -250,6 +264,14 @@ class UsernameCompiler:
             self.update_status("⏳ Restarting server and reconnecting...", "blue")
             self.restart_server()
             time.sleep(2)  # wait a bit for the server to boot
+        # Wait for WebSocket to reconnect and update status to green if successful
+        def wait_for_ws():
+            for _ in range(30):  # wait up to 3 seconds
+                if self.ws_manager and getattr(self.ws_manager, 'connected', False):
+                    self.update_status("🟢 Connected", "green")
+                    return
+                time.sleep(0.1)
+        threading.Thread(target=wait_for_ws, daemon=True).start()
 
     def on_close_window(self):
         try:
@@ -261,6 +283,7 @@ class UsernameCompiler:
                 self.server_process.wait(timeout=5)
         except Exception as e:
             print(f"Error during cleanup: {e}")
+            log_error(e)
         finally:
             self.root.destroy()
 
@@ -319,6 +342,7 @@ class UsernameCompiler:
             self.root.after(0, update_status)
 
         except Exception as e:
+            log_error(e)
             self.root.after(0, lambda: status_label.config(
                 text=f"Could not connect", fg="red"
             ))
@@ -333,7 +357,8 @@ class UsernameCompiler:
         try:
             port = self.port_entry.get()
             requests.post(f"http://localhost:{port}/disconnect", json={"platform": platform})
-        except Exception:
+        except Exception as e:
+            log_error(e)
             pass
 
     def submit_keyword(self):
@@ -358,7 +383,8 @@ class UsernameCompiler:
                 self.update_keyword_status(f"Keyword set: {keyword}", "green")
             else:
                 self.update_keyword_status("❌ Failed to set keyword", "red")
-        except Exception:
+        except Exception as e:
+            log_error(e)
             self.update_keyword_status("❌ Could not reach server", "red")
 
     def clear_viewers(self):
@@ -385,6 +411,7 @@ class UsernameCompiler:
                 
         except Exception as e:
             print(f"Error clearing keyword: {e}")
+            log_error(e)
             pass
 
     def toggle_keyword_visibility(self):
@@ -402,6 +429,7 @@ class UsernameCompiler:
                 self.keyword_label_overlay.lift()
             except Exception as e:
                 print("Toggle overlay error:", e)
+                log_error(e)
         else:
             self.toggle_keyword_btn.config(text="Hide")
             self.keyword_overlay.lower()
@@ -566,6 +594,7 @@ class UsernameCompiler:
 
         except Exception as e:
             print("Failed to start server:", e)
+            log_error(e)
             return None
         
     def restart_server(self):
@@ -576,6 +605,7 @@ class UsernameCompiler:
             time.sleep(2)
             self.server_process = self.start_server(int(self.port_entry.get()))
         except Exception as e:
+            log_error(e)
             self.update_status(f"❌ Error restarting server: {e}", "red")
 
 
