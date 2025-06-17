@@ -22,9 +22,7 @@
     "@babel/preset-env": "^7.27.2"
   },
   "pkg": {
-    "assets": [
-      "node_modules/axios/**/*"
-    ]
+    "assets": ["overlay.html"]
   },
   "repository": {
     "type": "git",

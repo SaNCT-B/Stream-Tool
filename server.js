@@ -4,6 +4,7 @@ const WebSocket = require('ws');
 const { TikTokLiveConnection, WebcastEvent } = require('tiktok-live-connector');
 const tmi = require('tmi.js');
 const fs = require('fs');
+const path = require('path');
 
 const ERROR_LOG = 'error_output.log';
 // Overwrite error log at startup
@@ -309,7 +310,7 @@ function addRecentViewer(name, platform) {
 // Patch chat events to record platform
 // (Insert this logic in TikTok and Twitch chat handlers)
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/overlay.html');
+    res.sendFile(path.join(__dirname, 'overlay.html'));
 });
 app.get('/recent-viewers', (req, res) => {
     // viewersSet stores nicknames now, so return as is
