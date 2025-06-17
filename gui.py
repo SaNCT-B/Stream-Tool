@@ -15,9 +15,11 @@ import requests
 from listener import create_listener
 
 ERROR_LOG = 'error_output.log'
-# Overwrite error log at startup
-with open(ERROR_LOG, 'w', encoding='utf-8') as f:
-    pass
+# Only clear the error log if it does not exist (first launch)
+if not os.path.exists(ERROR_LOG):
+    with open(ERROR_LOG, 'w', encoding='utf-8') as f:
+        pass
+
 def log_error(err):
     try:
         with open(ERROR_LOG, 'a', encoding='utf-8') as f:

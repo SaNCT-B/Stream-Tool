@@ -7,8 +7,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ERROR_LOG = 'error_output.log';
-// Overwrite error log at startup
-fs.writeFileSync(ERROR_LOG, '', 'utf8');
+// Only clear the error log if it does not exist (first launch)
+if (!fs.existsSync(ERROR_LOG)) {
+    fs.writeFileSync(ERROR_LOG, '', 'utf8');
+}
 function logError(err) {
     const msg = `[${new Date().toISOString()}] ${err && err.stack ? err.stack : err}\n`;
     fs.appendFile(ERROR_LOG, msg, () => {});

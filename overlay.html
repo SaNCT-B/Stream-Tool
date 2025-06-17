@@ -140,7 +140,8 @@
     }
 
     function fetchViewers() {
-      fetch('/overlay-viewers')
+      const port = getPort();
+      fetch(`http://${window.location.hostname}:${port}/overlay-viewers`)
         .then(r => r.json())
         .then(data => {
           const oldLen = viewers.length;
@@ -151,8 +152,13 @@
     }
     // WebSocket for overlay clearing
     let ws;
+    function getPort() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('port') || '8080';
+    }
     function setupOverlayWS() {
-      ws = new WebSocket(`ws://${window.location.hostname}:8080`);
+      const port = getPort();
+      ws = new WebSocket(`ws://${window.location.hostname}:${port}`);
       ws.onmessage = function(event) {
         try {
           const msg = JSON.parse(event.data);
